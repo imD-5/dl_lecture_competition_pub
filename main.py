@@ -288,7 +288,7 @@ def ResNet50():
 
 
 #model idea flan T5 text encoder + image encoder + answer decoder
-# 1. concat, then decoded?
+# 1. concat, then decoder?
 # 2. transformer decoder?
 
 class VQAModel(nn.Module):
