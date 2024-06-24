@@ -287,9 +287,9 @@ def ResNet50():
     return ResNet(BottleneckBlock, [3, 4, 6, 3])
 
 
-#model idea flan T5 text encoder + image encoder + answer decoder
-# 1. concat, then decoder?
-# 2. transformer decoder?
+#model idea flan T5 text encoder + image encoder + answer text decoder
+# 1. concat, liniar layer then t5 decoder?
+# 2. cross attention, then t5 decoder?
 
 class VQAModel(nn.Module):
     def __init__(self, vocab_size: int, n_answer: int):
