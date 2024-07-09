@@ -67,7 +67,7 @@ class MultimodalVAE(nn.Module):
         cross_attended_text = self.cross_attention(encoded_text, encoded_image)
         combined_features = torch.cat([encoded_text, cross_attended_text], dim=1)
 
-        decoder_outputs = self.t5_model.decoder(input_ids=combined_features,
+        decoder_outputs = self.t5_model.decoder(input_ids=encoded_text,
             attention_mask=None,
             inputs_embeds=None,
             past_key_values=None,
@@ -87,8 +87,8 @@ class MultimodalVAE(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MMEncoder =  MultimodalVAE(device)
-input_text = "Tell me the answer to this question: what's in the image?"
+input_text = "Tell me the answer to this question: what color is a banana?"
 input_image =  Image.open(r"C:\Users\kimura.daigo\Downloads\sample_image.jpg")
 
-encoded_input = MMEncoder(input_text, input_image)
-print(encoded_input)
+output = MMEncoder(input_text, input_image)
+print(output)
