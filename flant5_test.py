@@ -35,12 +35,15 @@ class CrossAttention(nn.Module):
         attn = attn.softmax(dim=-1)
         out = torch.matmul(attn, v)
         return out
-class MultimodalEncoding(nn.Module):
+    
+class MultimodalVAE(nn.Module):
     def __init__(self, device):
         super().__init__()  
         self.device = device
         self.tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base", device_map="auto")
         self.text_Encoder = T5EncoderModel.from_pretrained("google/flan-t5-base", device_map="auto")
+        self.t5_model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-base", device_map="auto").to(self.device)
+
         self.image_transforms = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -63,15 +66,7 @@ class MultimodalEncoding(nn.Module):
         
         cross_attended_text = self.cross_attention(encoded_text, encoded_image)
         combined_features = torch.cat([encoded_text, cross_attended_text], dim=1)
-        
-        return combined_features
 
-class T5Decoder(nn.Module):
-    def __init__(self, device):
-        super().__init__()  
-        self.t5_model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-base", device_map="auto").to(self.device)
-        
-    def forward(self, combined_features):
         decoder_outputs = self.t5_model.decoder(input_ids=combined_features,
             attention_mask=None,
             inputs_embeds=None,
@@ -85,10 +80,13 @@ class T5Decoder(nn.Module):
             return_dict=None,
         )
         sequence_output = decoder_outputs[0]
+        lm_logits = self.t5_model.lm_head(sequence_output)
+
+        return lm_logits
         
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-MMEncoder =  MultimodalEncoding(device)
+MMEncoder =  MultimodalVAE(device)
 input_text = "Tell me the answer to this question: what's in the image?"
 input_image =  Image.open(r"C:\Users\kimura.daigo\Downloads\sample_image.jpg")
 
