@@ -13,7 +13,7 @@ model = Blip2ForConditionalGeneration.from_pretrained(
 image_path = "sample_image2.png"
 image = Image.open(image_path)
 
-prompt = "Question: hWhat color do these look? Answer:"
+prompt = "Question: What color do these look? Answer:"
 inputs = processor(images=image, text=prompt, return_tensors="pt").to(device="cuda", dtype=torch.float16)
 
 generated_ids = model.generate(**inputs)

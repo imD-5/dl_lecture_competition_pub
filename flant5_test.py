@@ -40,8 +40,8 @@ class MultimodalVAE(nn.Module):
     def __init__(self, device):
         super().__init__()  
         self.device = device
-        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base", device_map="auto")
-        self.t5_model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-base", device_map="auto")
+        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-xl", device_map="auto")
+        self.t5_model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto")
 
         self.image_transforms = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -77,14 +77,14 @@ class MultimodalVAE(nn.Module):
         print(f"Encoded text shape: {encoded_text}")
         print(f"Encoded image shape: {encoded_image}")
         
-        cross_attended_text = self.cross_attention(encoded_text, encoded_image)
-        combined_features = torch.cat([encoded_text, cross_attended_text], dim=1)
+        #cross_attended_text = self.cross_attention(encoded_text, encoded_image)
+        #combined_features = torch.cat([encoded_text, cross_attended_text], dim=1)
 
         decoder_input_ids = self.get_initial_decoder_input_ids(self.tokenizer).to(self.device)
         for _ in range(50):
             decoder_outputs = self.t5_model.decoder(
                 input_ids=decoder_input_ids,
-                encoder_hidden_states=combined_features,
+                encoder_hidden_states=encoded_text,
                 use_cache=False,
                 return_dict=True
             )
@@ -108,7 +108,7 @@ class MultimodalVAE(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MMEncoder =  MultimodalVAE(device)
-input_text = "Tell me the answer to this question: what color is this banana?"
+input_text = "Tell me the answer to this question: what color is a banana?"
 input_image =  Image.open(r"sample_image.jpg")
 
 output = MMEncoder(input_text, input_image)
