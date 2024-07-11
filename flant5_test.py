@@ -1,19 +1,7 @@
-from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch.nn as nn
 import torch
 
-"""
-tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base", device_map="auto")
-model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-base", device_map="auto")
-
-input_text = "answer this: what ae you?"
-input_ids = tokenizer(input_text, return_tensors="pt").input_ids.to("cuda")
-
-outputs = model.generate(input_ids)
-print(tokenizer.decode(outputs[0]))
-"""
-
-from transformers import T5Tokenizer, T5ForConditionalGeneration, T5EncoderModel, AutoTokenizer
+from transformers import T5ForConditionalGeneration,  AutoTokenizer
 from transformers import ViTMAEModel
 from torchvision import transforms
 from PIL import Image
