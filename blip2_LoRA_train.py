@@ -2,7 +2,9 @@ import os
 import torch
 from torch.utils.data import DataLoader, random_split
 from transformers import Blip2Processor, Blip2ForConditionalGeneration
-from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
+from peft.utils.other import prepare_model_for_kbit_training
+from peft.mapping import get_peft_model
+from peft.mapping import LoraConfig
 from bitsandbytes.optim import AdamW8bit
 from statistics import mode
 import pandas
@@ -17,17 +19,25 @@ torch.manual_seed(42)
 torch.backends.cudnn.enabled = False
 
 # Load BLIP-2 model and processor
-model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", load_in_8bit=True, device_map="auto")
+model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", device_map="auto", )
 processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
 
 # Prepare model for k-bit training
 model = prepare_model_for_kbit_training(model)
 
-# Define LoRA configuration
 lora_config = LoraConfig(
     r=16,
     lora_alpha=32,
-    target_modules=["q_proj", "v_proj"],
+    target_modules=[
+        "self.query",
+        "self.key",
+        "self.value",
+        "output.dense",
+        "self_attn.qkv",
+        "self_attn.projection",
+        "mlp.fc1",
+        "mlp.fc2",
+    ],
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM"
