@@ -1,8 +1,9 @@
 import torch
-from transformers import Blip2Processor, Blip2ForConditionalGeneration
+from transformers import BlipProcessor, BlipForQuestionAnswering
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
+import pandas as pd
 from PIL import Image
 import os
 
@@ -31,8 +32,8 @@ class VQADataset(torch.utils.data.Dataset):
         return len(self.df)
 
 def load_model(model_path):
-    processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-    model = Blip2ForConditionalGeneration.from_pretrained(model_path)
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-capfilt-large")
+    model = BlipForQuestionAnswering.from_pretrained(model_path)
     return processor, model
 
 def create_submission(model, processor, test_dataloader, device):
