@@ -12,8 +12,8 @@ from tqdm import tqdm
 import pickle
 import numpy as np
 
-model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base")
-processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-base")
+model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-capfilt-large")
+processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-capfilt-large")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -82,18 +82,30 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 valid_dataloader = DataLoader(valid_dataset, batch_size=8, shuffle=False, pin_memory=True, num_workers=4)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, pin_memory=True, num_workers=4)
 
-
-optimizer = torch.optim.AdamW(model.parameters(), lr=4e-5)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1, verbose=False)
-
-num_epochs = 100
+num_epochs = 15
 patience = 10
 min_eval_loss = float("inf")
 early_stopping_hook = 0
 tracking_information = []
 scaler = torch.cuda.amp.GradScaler()
 
+optimizer = torch.optim.AdamW(model.parameters(), lr=4e-5)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+
 print("train len ", len(train_dataloader ))
+def unfreeze_layers(epoch):
+    if epoch == 0:
+        for param in model.vision_model.parameters():
+            param.requires_grad = False
+        for param in model.text_decoder.parameters():
+            param.requires_grad = False
+    elif epoch == 5:
+        for param in model.text_decoder.parameters():
+            param.requires_grad = True
+    elif epoch == 10:
+        for param in model.vision_model.parameters():
+            param.requires_grad = True
+
 def calculate_accuracy(model, dataloader, device):
     model.eval()
     correct = 0
@@ -119,6 +131,7 @@ def calculate_accuracy(model, dataloader, device):
     return correct / total
 
 for epoch in range(num_epochs):
+    unfreeze_layers(epoch)
     epoch_loss = 0
     model.train()
     for idx, batch in tqdm(enumerate(train_dataloader), desc='Training batch'):
@@ -209,7 +222,4 @@ for idx, batch in tqdm(enumerate(test_dataloader)):
 predictions_array = np.array(submission)
 np.save("submission.npy", predictions_array)
 
-submission = np.array(submission)
 torch.save(model.state_dict(), "model.pth")
-np.save("submission.npy", submission)
-
