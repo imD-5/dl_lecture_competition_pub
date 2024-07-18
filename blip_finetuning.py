@@ -95,7 +95,7 @@ def unfreeze_layers(epoch):
     elif epoch == 5:
         for param in model.text_decoder.parameters():
             param.requires_grad = True
-    elif epoch == 10:
+    elif epoch == 25:
         for param in model.vision_model.parameters():
             param.requires_grad = True
 
@@ -148,14 +148,14 @@ train_size = total_size - valid_size
 train_dataset, valid_dataset = random_split(full_train_dataset, [train_size, valid_size])
 
 # Set batch size
-batch_size = 32
+batch_size = 64
 
 # Create DataLoaders
-train_dataloader = get_dataloader(train_dataset, batch_size=32, shuffle=True, num_workers=16, device=device)
-valid_dataloader = get_dataloader(valid_dataset, batch_size=32, shuffle=True, num_workers=16, device=device)
+train_dataloader = get_dataloader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=12, device=device)
+valid_dataloader = get_dataloader(valid_dataset, batch_size=batch_size, shuffle=True, num_workers=12, device=device)
 
 num_epochs = 20
-patience = 10
+patience = 5
 min_eval_loss = float("inf")
 early_stopping_hook = 0
 tracking_information = []
@@ -233,7 +233,9 @@ for epoch in range(num_epochs):
     scheduler.step()
 
     # Update unfrozen layers less frequently
-    if epoch in [5, 10]:
+    if epoch in [5]:
         unfreeze_layers(epoch)
 
 print("The finetuning process has finished!")
+
+model.save_pretrained("Model/blip-saved-model-last", from_pt=True)

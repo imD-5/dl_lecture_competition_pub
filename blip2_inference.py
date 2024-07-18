@@ -29,7 +29,8 @@ class VQADataset(torch.utils.data.Dataset):
 
 def load_model(model_path):
     processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-    model = Blip2ForConditionalGeneration.from_pretrained(model_path)
+    #model = Blip2ForConditionalGeneration.from_pretrained(model_path)
+    model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b")
     return processor, model
 
 def generate_submissions(model, processor, test_loader, device):

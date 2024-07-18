@@ -1,7 +1,7 @@
 import os
 import torch
 from torch.utils.data import DataLoader, Dataset, random_split
-from transformers import Blip2Processor, Blip2ForConditionalGeneration, BitsAndBytesConfig
+from transformers import Blip2Processor, Blip2ForConditionalGeneration, BitsAndBytesConfig, Blip2Config
 from peft.utils.other import prepare_model_for_kbit_training
 from peft.mapping import get_peft_model
 from peft.mapping import LoraConfig
@@ -33,7 +33,7 @@ class VQADataset(Dataset):
         mode_answer = mode(answers)
 
         encoding = self.processor(image, question, 
-                                  max_length=16, 
+                                  max_length=20, 
                                   padding='max_length', 
                                   truncation=True,
                                   return_tensors="pt")
@@ -43,7 +43,7 @@ class VQADataset(Dataset):
 
         if self.answer:
             labels = self.processor.tokenizer(mode_answer, 
-                                              max_length=16, 
+                                              max_length=20, 
                                               padding='max_length', 
                                               truncation=True)['input_ids']
             encoding["labels"] = torch.tensor(labels)
@@ -83,82 +83,24 @@ def get_dataloader(dataset, batch_size, shuffle, num_workers, device):
         worker_init_fn=lambda worker_id: torch.manual_seed(worker_id)
     )
 
-def unfreeze_layers(epoch):
-    if epoch == 0:
-        for param in model.vision_model.parameters():
-            param.requires_grad = False
-        for param in model.text_decoder.parameters():
-            param.requires_grad = False
-    elif epoch == 5:
-        for param in model.text_decoder.parameters():
-            param.requires_grad = True
-    elif epoch == 10:
-        for param in model.vision_model.parameters():
-            param.requires_grad = True
-
-def calculate_accuracy(model, dataloader, device):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for batch in tqdm(dataloader, desc='Calculating accuracy'):
-            batch = move_to_device(batch, device)
-            input_ids = batch['input_ids']
-            pixel_values = batch['pixel_values']
-            attention_mask = batch['attention_mask']
-            labels = batch['labels']
-
-            outputs = model.generate(input_ids=input_ids,
-                                     pixel_values=pixel_values,
-                                     attention_mask=attention_mask,
-                                     max_new_tokens=8)
-            
-            predictions = processor.batch_decode(outputs, skip_special_tokens=True)
-            actual = processor.batch_decode(labels, skip_special_tokens=True)
-            
-            correct += sum(p.strip() == a.strip() for p, a in zip(predictions, actual))
-            total += len(predictions)
-    
-    return correct / total
-
-bnb_config = BitsAndBytesConfig(
-    load_in_8bit=True,
-    bnb_8bit_use_double_quant=True,
-    bnb_8bit_quant_type="nf4",
-    bnb_8bit_compute_dtype=torch.float16
-)
-
 # Load BLIP-2 model and processor
 model = Blip2ForConditionalGeneration.from_pretrained(
     "Salesforce/blip2-opt-2.7b", 
-    quantization_config=bnb_config,
-    device_map="auto"
+    device_map="auto",
 )
 processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-
-# Prepare model for k-bit training
-model = prepare_model_for_kbit_training(model)
 
 lora_config = LoraConfig(
     r=16,
     lora_alpha=32,
-    target_modules=[
-        "self.query",
-        "self.key",
-        "self.value",
-        "output.dense",
-        "self_attn.qkv",
-        "self_attn.projection",
-        "mlp.fc1",
-        "mlp.fc2",
-    ],
+    target_modules=["q_proj", "k_proj"],
     lora_dropout=0.05,
     bias="none",
-    task_type="CAUSAL_LM"
 )
 
 # Apply LoRA to the model
 model = get_peft_model(model, lora_config)
+
 model.print_trainable_parameters()
 
 
@@ -166,52 +108,28 @@ full_train_dataset = VQADataset(df_path="./data/train.json", image_dir="./data/t
 
 # Calculate sizes for train and validation sets
 total_size = len(full_train_dataset)
-valid_size = int(0.01 * total_size)  # 10% for validation
+valid_size = int(0.05 * total_size)  # 10% for validation
 train_size = total_size - valid_size
 
 # Create train and validation splits
 train_dataset, valid_dataset = random_split(full_train_dataset, [train_size, valid_size])
 
 # Set batch size
-batch_size = 32
+batch_size = 64
 
 # Create DataLoaders
-train_dataloader = get_dataloader(train_dataset, batch_size=32, shuffle=True, num_workers=16, device=device)
-valid_dataloader = get_dataloader(valid_dataset, batch_size=32, shuffle=True, num_workers=16, device=device)
+train_dataloader = get_dataloader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=12, device=device)
+valid_dataloader = get_dataloader(valid_dataset, batch_size=batch_size, shuffle=True, num_workers=12, device=device)
 
-num_epochs = 20
-patience = 10
+num_epochs = 15
+patience = 5
 min_eval_loss = float("inf")
 early_stopping_hook = 0
 tracking_information = []
 scaler = torch.cuda.amp.GradScaler()
 
-optimizer = AdamW8bit(model.parameters(), lr=5e-5)  # Using 8-bit AdamW optimizer
+optimizer = AdamW8bit(model.parameters(), lr=5e-4)  # Using 8-bit AdamW optimizer
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
-
-def calculate_accuracy(model, dataloader, device):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for batch in tqdm(dataloader, desc='Calculating accuracy'):
-            input_ids = batch['input_ids'].to(device)
-            pixel_values = batch['pixel_values'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-
-            outputs = model.generate(input_ids=input_ids,
-                                     pixel_values=pixel_values,
-                                     attention_mask=attention_mask,
-                                     max_new_tokens=16)
-            
-            predictions = processor.batch_decode(outputs, skip_special_tokens=True)
-            actual = processor.batch_decode(labels, skip_special_tokens=True)
-            
-            correct += sum(p.strip() == a.strip() for p, a in zip(predictions, actual))
-            total += len(predictions)
-    
-    return correct / total
 
 for epoch in range(num_epochs):
     epoch_loss = 0
@@ -243,6 +161,8 @@ for epoch in range(num_epochs):
     model.eval()
     eval_loss = 0
     with torch.no_grad():
+        correct = 0
+        total = 0
         for batch in tqdm(valid_dataloader, desc='Validating'):
             batch = move_to_device(batch, device)
             input_ids = batch['input_ids']
@@ -256,17 +176,22 @@ for epoch in range(num_epochs):
                                 attention_mask=attention_mask,
                                 labels=labels)
                 eval_loss = outputs.loss
-        
+                predicted_token_ids = torch.argmax(outputs.logits, dim=-1)
+                predictions = processor.batch_decode(predicted_token_ids, skip_special_tokens=True)
+                actual = processor.batch_decode(labels, skip_special_tokens=True)
+            correct += sum(p.strip() == a.strip() for p, a in zip(predictions, actual))
+            total += len(predictions)
+
         avg_eval_loss = eval_loss / len(valid_dataloader)
-        valid_accuracy = calculate_accuracy(model, valid_dataloader, device)
+        valid_accuracy = correct / total
         
         print(f"Epoch: {epoch+1} - Train Loss: {avg_train_loss:.4f} - "
               f"Eval Loss: {avg_eval_loss:.4f} - LR: {optimizer.param_groups[0]['lr']:.6f} - "
               f"Valid Accuracy: {valid_accuracy:.4f}")
         
         if avg_eval_loss < min_eval_loss:
-            model.save_pretrained("Model/blip-saved-model", from_pt=True)
-            print("Saved model to Model/blip-saved-model")
+            model.save_pretrained("Model/blip2-saved-model", from_pt=True)
+            print("Saved model to Model/blip2-saved-model")
             min_eval_loss = avg_eval_loss
             early_stopping_hook = 0
         else:
@@ -277,8 +202,5 @@ for epoch in range(num_epochs):
     
     scheduler.step()
 
-    # Update unfrozen layers less frequently
-    if epoch in [5, 10]:
-        unfreeze_layers(epoch)
-
+model.save_pretrained("Model/blip2-saved-model-last", from_pt=True)
 print("The finetuning process has finished!")
